@@ -1,0 +1,41 @@
+{
+  "name": "Tutorial",
+  "difficulty": "tutorial",
+  "gridSize": {
+    "rows": 3,
+    "cols": 3
+  },
+  "exit": {
+    "row": 1,
+    "col": 2
+  },
+  "playerCar": {
+    "row": 1,
+    "col": 0,
+    "length": 2,
+    "orientation": "horizontal"
+  },
+  "vehicles": [
+    {
+      "row": 2,
+      "col": 1,
+      "length": 2,
+      "orientation": "horizontal",
+      "color": "blue"
+    }
+  ],
+  "obstacles": [
+    {
+      "row": 0,
+      "col": 2,
+      "type": "tree"
+    }
+  ],
+  "validation": [
+    {
+      "vehicleId": "player",
+      "row": 1,
+      "col": 1
+    }
+  ]
+}

@@ -1,0 +1,547 @@
+@import './variables.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Screens */
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 1.5rem;
+  gap: 2rem;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.screen h1 {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--secondary);
+  color: white;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s, box-shadow 0.15s;
+  min-height: 48px;
+}
+
+.btn:active {
+  transform: scale(0.96);
+  box-shadow: none;
+}
+
+/* Board */
+.board-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.board {
+  display: grid;
+  gap: var(--gap);
+  background: var(--board-bg);
+  padding: 8px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  position: relative;
+  touch-action: none;
+}
+
+.board .cell {
+  width: var(--cell-size);
+  height: var(--cell-size);
+  background: var(--cell-bg);
+  border-radius: 6px;
+}
+
+/* Exit marker */
+.exit-marker {
+  position: absolute;
+  z-index: 0;
+}
+
+.exit-marker.right {
+  right: -18px;
+  width: 18px;
+  height: var(--cell-size);
+  background: var(--accent);
+  border-radius: 0 8px 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.exit-marker.right::after {
+  content: '>';
+  font-weight: 900;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+/* Vehicles */
+.vehicle {
+  position: absolute;
+  border-radius: var(--radius);
+  cursor: grab;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              top 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vehicle.dragging {
+  cursor: grabbing;
+  z-index: 10;
+  box-shadow: var(--shadow-lg);
+  transition: none;
+}
+
+.vehicle.player {
+  background: var(--player-color);
+  border: 3px solid var(--player-border);
+}
+
+.vehicle.color-blue, .editor-entity.color-blue { background: var(--vehicle-blue); }
+.vehicle.color-green, .editor-entity.color-green { background: var(--vehicle-green); }
+.vehicle.color-yellow, .editor-entity.color-yellow { background: var(--vehicle-yellow); }
+.vehicle.color-purple, .editor-entity.color-purple { background: var(--vehicle-purple); }
+
+/* Vehicle face (eyes on the front) */
+.vehicle .face {
+  font-size: calc(var(--cell-size) * 0.4);
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
+}
+
+/* Obstacles */
+.obstacle {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell-size) * 0.55);
+  pointer-events: none;
+}
+
+/* Game header bar */
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 400px;
+  padding: 0 0.5rem;
+}
+
+.move-counter {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+/* Level cards */
+.level-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 320px;
+}
+
+.level-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s;
+}
+
+.level-card:active {
+  transform: scale(0.97);
+}
+
+.level-card .level-num {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--secondary);
+  color: white;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.level-card .level-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.level-card .level-name {
+  font-weight: 700;
+}
+
+.level-card .level-meta {
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.level-meta .par {
+  color: var(--secondary);
+  font-weight: 600;
+}
+
+.level-meta .invalid {
+  color: #e74c3c;
+  font-weight: 600;
+}
+
+.level-meta .unvalidated {
+  color: #f39c12;
+  font-weight: 600;
+}
+
+.level-card.completed .level-num {
+  background: var(--vehicle-green);
+}
+
+/* Car selector */
+.car-options {
+  display: flex;
+  gap: 1rem;
+}
+
+.car-option {
+  width: 80px;
+  height: 80px;
+  border: 3px solid transparent;
+  border-radius: var(--radius-lg);
+  background: white;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.car-option:active {
+  transform: scale(0.94);
+}
+
+.car-option.selected {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+}
+
+/* Win overlay */
+.win-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.3s ease;
+}
+
+.win-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.win-card h2 {
+  font-size: 1.6rem;
+}
+
+.win-card .moves {
+  color: var(--text-light);
+}
+
+.win-card .btn-row {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+/* Create puzzle button */
+.create-btn {
+  margin-top: 1rem;
+  background: var(--accent);
+  color: var(--text);
+}
+
+/* Puzzle Editor */
+.editor-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  animation: fadeIn 0.3s ease;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.editor-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.editor-input {
+  padding: 0.4rem 0.6rem;
+  border: 2px solid var(--cell-bg);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  background: white;
+}
+
+.editor-input:focus {
+  outline: none;
+  border-color: var(--secondary);
+}
+
+select.editor-input {
+  cursor: pointer;
+}
+
+.editor-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tool-btn {
+  padding: 0.4rem 0.75rem;
+  border: 2px solid var(--cell-bg);
+  border-radius: var(--radius);
+  background: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+  min-height: 36px;
+}
+
+.tool-btn.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
+}
+
+.tool-btn:hover:not(.active) {
+  border-color: var(--secondary);
+}
+
+.editor-canvas {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: visible;
+  position: relative;
+}
+
+.editor-grid {
+  display: grid;
+  gap: var(--gap);
+  background: var(--board-bg);
+  padding: 8px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  position: relative;
+}
+
+.editor-cell {
+  width: var(--cell-size);
+  height: var(--cell-size);
+  background: var(--cell-bg);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.editor-cell:hover {
+  background: #c5c0b5;
+}
+
+.editor-cell.edge-cell {
+  cursor: crosshair;
+}
+
+.editor-cell.highlight {
+  background: rgba(78, 205, 196, 0.3);
+}
+
+.editor-entity {
+  position: absolute;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell-size) * 0.4);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.editor-entity.player {
+  background: var(--player-color);
+  border: 2px solid var(--player-border);
+}
+
+.editor-entity.color-blue,
+.editor-entity.color-green,
+.editor-entity.color-yellow,
+.editor-entity.color-purple {
+  border: 2px solid rgba(0, 0, 0, 0.15);
+}
+
+.editor-entity.obstacle {
+  font-size: calc(var(--cell-size) * 0.55);
+  z-index: 1;
+}
+
+.editor-exit-marker {
+  position: absolute;
+  z-index: 0;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 0.25rem 0;
+}
+
+.editor-actions .btn {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  min-height: 40px;
+}
+
+.color-picker {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.color-swatch.selected {
+  border-color: var(--text);
+  transform: scale(1.15);
+}
+
+.color-swatch.blue { background: var(--vehicle-blue); }
+.color-swatch.green { background: var(--vehicle-green); }
+.color-swatch.yellow { background: var(--vehicle-yellow); }
+.color-swatch.purple { background: var(--vehicle-purple); }
+
+/* Test mode overlay in editor */
+.test-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+}
+
+.test-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  background: rgba(255,255,255,0.9);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.test-controls .move-counter {
+  font-weight: 700;
+  font-size: 0.9rem;
+}

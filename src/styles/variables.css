@@ -1,0 +1,29 @@
+:root {
+  --primary: #FF6B6B;
+  --secondary: #4ECDC4;
+  --accent: #FFE66D;
+
+  --player-color: #FF6B6B;
+  --player-border: #CC5555;
+  --vehicle-blue: #51ADFE;
+  --vehicle-green: #6DD47E;
+  --vehicle-yellow: #FFD93D;
+  --vehicle-purple: #A78BFA;
+  --obstacle-color: #8B7355;
+
+  --bg: #F0EDE6;
+  --board-bg: #C8C3B8;
+  --cell-bg: #DDD8CE;
+  --text: #2C3E50;
+  --text-light: #7F8C8D;
+
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.1);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.15);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.2);
+
+  --radius: 10px;
+  --radius-lg: 16px;
+
+  --cell-size: min(16vw, 80px);
+  --gap: 4px;
+}

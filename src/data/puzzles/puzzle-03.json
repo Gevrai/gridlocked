@@ -1,0 +1,17 @@
+{
+  "name": "Rush Hour",
+  "difficulty": "medium",
+  "gridSize": { "rows": 5, "cols": 5 },
+  "exit": { "row": 2, "col": 4 },
+  "playerCar": { "row": 2, "col": 0, "length": 2, "orientation": "horizontal" },
+  "vehicles": [
+    { "row": 0, "col": 2, "length": 2, "orientation": "vertical", "type": "truck" },
+    { "row": 0, "col": 3, "length": 2, "orientation": "vertical", "type": "car" },
+    { "row": 3, "col": 3, "length": 2, "orientation": "vertical", "type": "car" },
+    { "row": 4, "col": 1, "length": 2, "orientation": "horizontal", "type": "truck" }
+  ],
+  "obstacles": [
+    { "row": 0, "col": 4, "type": "tree" },
+    { "row": 4, "col": 0, "type": "sidewalk" }
+  ]
+}

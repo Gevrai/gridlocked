@@ -1,0 +1,95 @@
+{
+  "name": "Traffic jam",
+  "difficulty": "easy",
+  "gridSize": {
+    "rows": 4,
+    "cols": 7
+  },
+  "exit": {
+    "row": 1,
+    "col": 6
+  },
+  "playerCar": {
+    "row": 1,
+    "col": 0,
+    "length": 2,
+    "orientation": "horizontal"
+  },
+  "vehicles": [
+    {
+      "row": 0,
+      "col": 2,
+      "length": 2,
+      "orientation": "vertical",
+      "color": "green"
+    },
+    {
+      "row": 1,
+      "col": 4,
+      "length": 2,
+      "orientation": "vertical",
+      "color": "green"
+    },
+    {
+      "row": 0,
+      "col": 5,
+      "length": 2,
+      "orientation": "vertical",
+      "color": "yellow"
+    },
+    {
+      "row": 0,
+      "col": 6,
+      "length": 2,
+      "orientation": "vertical",
+      "color": "purple"
+    },
+    {
+      "row": 3,
+      "col": 4,
+      "length": 2,
+      "orientation": "horizontal",
+      "color": "blue"
+    },
+    {
+      "row": 0,
+      "col": 3,
+      "length": 2,
+      "orientation": "horizontal",
+      "color": "blue"
+    }
+  ],
+  "obstacles": [],
+  "validation": [
+    {
+      "vehicleId": "vehicle-4",
+      "row": 3,
+      "col": 0
+    },
+    {
+      "vehicleId": "vehicle-1",
+      "row": 2,
+      "col": 4
+    },
+    {
+      "vehicleId": "vehicle-0",
+      "row": 2,
+      "col": 2
+    },
+    {
+      "vehicleId": "vehicle-2",
+      "row": 2,
+      "col": 5
+    },
+    {
+      "vehicleId": "vehicle-3",
+      "row": 2,
+      "col": 6
+    },
+    {
+      "vehicleId": "player",
+      "row": 1,
+      "col": 5
+    }
+  ]
+}
