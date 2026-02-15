@@ -25,8 +25,36 @@ function markCompleted(id: string): void {
   }
 }
 
-function showCarSelector(): void {
-  renderCarSelector(app, () => showLevels());
+// --- Navigation with History API ---
+
+type Screen = { type: 'car-selector' } | { type: 'levels' } | { type: 'game'; puzzleId: string } | { type: 'editor'; puzzleId?: string } | { type: 'win'; puzzleId: string; moveCount: number };
+
+/** Navigate to a screen, pushing it onto the history stack. */
+function navigate(screen: Screen): void {
+  history.pushState(screen, '');
+  renderScreen(screen);
+}
+
+/** Render a screen without touching history. */
+function renderScreen(screen: Screen): void {
+  switch (screen.type) {
+    case 'car-selector':
+      renderCarSelector(app, () => navigate({ type: 'levels' }));
+      break;
+    case 'levels':
+      showLevels();
+      break;
+    case 'game':
+      startGame(screen.puzzleId);
+      break;
+    case 'editor':
+      showEditor(screen.puzzleId);
+      break;
+    case 'win':
+      // On back from win, go to levels (handled by popstate)
+      navigate({ type: 'levels' });
+      break;
+  }
 }
 
 function showLevels(): void {
@@ -35,15 +63,17 @@ function showLevels(): void {
     app,
     puzzles,
     getCompleted(),
-    (puzzle) => startGame(puzzle),
-    () => showEditor(),
-    (puzzle) => showEditor(puzzle),
+    (puzzle) => navigate({ type: 'game', puzzleId: puzzle.id }),
+    () => navigate({ type: 'editor' }),
+    (puzzle) => navigate({ type: 'editor', puzzleId: puzzle.id }),
   );
 }
 
-function startGame(puzzle: Puzzle): void {
+function startGame(puzzleId: string): void {
   const puzzles = getAllPuzzles();
-  const idx = puzzles.findIndex(p => p.id === puzzle.id);
+  const puzzle = puzzles.find(p => p.id === puzzleId);
+  if (!puzzle) { navigate({ type: 'levels' }); return; }
+  const idx = puzzles.indexOf(puzzle);
 
   new GameRenderer(
     app,
@@ -55,21 +85,39 @@ function startGame(puzzle: Puzzle): void {
         app,
         moveCount,
         hasNext,
-        () => startGame(puzzles[idx + 1]),
-        () => showLevels(),
+        () => navigate({ type: 'game', puzzleId: puzzles[idx + 1].id }),
+        () => navigate({ type: 'levels' }),
       );
     },
-    () => showLevels(),
+    () => navigate({ type: 'levels' }),
   );
 }
 
-function showEditor(editPuzzle?: RawPuzzle & { id?: string }): void {
-  new PuzzleEditor(app, () => showLevels(), editPuzzle);
+function showEditor(puzzleId?: string): void {
+  let editPuzzle: (RawPuzzle & { id?: string }) | undefined;
+  if (puzzleId) {
+    const puzzles = getAllPuzzles();
+    const found = puzzles.find(p => p.id === puzzleId);
+    if (found) editPuzzle = found as any;
+  }
+  new PuzzleEditor(app, () => navigate({ type: 'levels' }), editPuzzle);
 }
 
+window.addEventListener('popstate', (e) => {
+  const screen = e.state as Screen | null;
+  if (screen) {
+    renderScreen(screen);
+  } else {
+    // No state — go to levels (initial entry)
+    showLevels();
+  }
+});
+
 // Boot
-if (localStorage.getItem('car-skin')) {
-  showLevels();
-} else {
-  showCarSelector();
-}
+const initialScreen: Screen = localStorage.getItem('car-skin')
+  ? { type: 'levels' }
+  : { type: 'car-selector' };
+
+// Replace current history entry with initial screen
+history.replaceState(initialScreen, '');
+renderScreen(initialScreen);
