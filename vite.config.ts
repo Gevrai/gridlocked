@@ -54,6 +54,6 @@ function puzzleEditorPlugin(): Plugin {
 }
 
 export default defineConfig({
-  base: '/rush-hour/',
+  base: '/gridlocked/',
   plugins: [puzzleEditorPlugin()],
 });

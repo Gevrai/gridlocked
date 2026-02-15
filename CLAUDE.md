@@ -104,7 +104,7 @@ Accessible via the "Create Puzzle" button on the level selector. Features:
 
 ## Deployment
 
-GitHub Pages via `.github/workflows/deploy.yml`. Deploys on push to `main`. The Vite `base` is set to `/rush-hour/` in `vite.config.ts` — update this if the repo name changes.
+GitHub Pages via `.github/workflows/deploy.yml`. Deploys on push to `main`. This is deployed as a project site at `/gridlocked/`, so the Vite `base` is set to `/gridlocked/` in `vite.config.ts`.
 
 ## Conventions
 
