@@ -1,11 +1,11 @@
 import './styles/main.css';
-import { puzzles } from './data/puzzles/index';
+import { getAllPuzzles } from './data/puzzles/index';
 import { renderCarSelector } from './ui/CarSelector';
 import { renderLevelSelector } from './ui/LevelSelector';
 import { GameRenderer } from './ui/GameRenderer';
 import { showWinScreen } from './ui/WinScreen';
 import { PuzzleEditor } from './ui/PuzzleEditor';
-import type { Puzzle } from './types/puzzle';
+import type { Puzzle, RawPuzzle } from './types/puzzle';
 
 const app = document.getElementById('app')!;
 
@@ -30,24 +30,27 @@ function showCarSelector(): void {
 }
 
 function showLevels(): void {
+  const puzzles = getAllPuzzles();
   renderLevelSelector(
     app,
     puzzles,
     getCompleted(),
     (puzzle) => startGame(puzzle),
     () => showEditor(),
+    (puzzle) => showEditor(puzzle),
   );
 }
 
 function startGame(puzzle: Puzzle): void {
-  const idx = puzzles.indexOf(puzzle);
+  const puzzles = getAllPuzzles();
+  const idx = puzzles.findIndex(p => p.id === puzzle.id);
 
   new GameRenderer(
     app,
     puzzle,
     (moveCount) => {
       markCompleted(puzzle.id);
-      const hasNext = idx < puzzles.length - 1;
+      const hasNext = idx >= 0 && idx < puzzles.length - 1;
       showWinScreen(
         app,
         moveCount,
@@ -60,8 +63,8 @@ function startGame(puzzle: Puzzle): void {
   );
 }
 
-function showEditor(): void {
-  new PuzzleEditor(app, () => showLevels());
+function showEditor(editPuzzle?: RawPuzzle & { id?: string }): void {
+  new PuzzleEditor(app, () => showLevels(), editPuzzle);
 }
 
 // Boot

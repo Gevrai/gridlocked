@@ -21,8 +21,9 @@ src/
   ui/CarSelector.ts           # Car skin picker screen
   ui/LevelSelector.ts         # Level list screen (shows par/unvalidated status)
   ui/WinScreen.ts             # Win overlay
-  data/puzzles/               # Puzzle JSON files (simplified format)
-  data/puzzles/index.ts       # Hydration logic + barrel — registers all puzzles
+  data/puzzles/builtin/       # Built-in puzzle JSON files (auto-discovered via glob)
+  data/puzzles/saved/         # Saved puzzles (dev mode; prod uses localStorage)
+  data/puzzles/index.ts       # Hydration, glob import, saved puzzle CRUD, rotation utility
   styles/main.css             # All styles (imports variables.css)
   styles/variables.css        # CSS custom properties (colors, sizes, shadows)
 ```
@@ -30,7 +31,7 @@ src/
 ## Key Architecture Decisions
 
 - **GameEngine** (src/core/GameEngine.ts) is the single source of truth. It owns state, validates moves, computes slide ranges, checks win conditions, and validates puzzles via `GameEngine.validatePuzzle()`.
-- **Puzzle hydration** (src/data/puzzles/index.ts) converts simplified JSON (`RawPuzzle`) to runtime `Puzzle` objects — auto-generating IDs, deducing exit direction, and assigning vehicle colors.
+- **Puzzle hydration** (src/data/puzzles/index.ts) converts simplified JSON (`RawPuzzle`) to runtime `Puzzle` objects — auto-generating IDs, deducing exit direction, and assigning vehicle colors. Built-in puzzles are auto-discovered via `import.meta.glob('./builtin/*.json')`. Saved puzzles are stored in localStorage (`saved-puzzles` key).
 - **Rendering uses absolute positioning** within a CSS Grid board. Vehicles are positioned via `left`/`top` pixel values computed from grid coordinates. During drag, CSS transitions are disabled; on release, they animate the snap.
 - **Pointer Events API** handles both touch and mouse via `pointerdown`/`pointermove`/`pointerup`.
 - **No router** — screens are swapped by replacing `#app` innerHTML. Simple functions per screen.
@@ -72,9 +73,8 @@ Puzzles use a simplified JSON format where redundant fields are auto-generated:
 
 ## Adding a New Puzzle
 
-1. Create `src/data/puzzles/puzzle-NN.json` following the simplified format above.
-2. Import it in `src/data/puzzles/index.ts` and add it to the `rawPuzzles` array.
-3. Alternatively, use the built-in Puzzle Editor (accessible from the level selector) to create, test, and save puzzles.
+1. Create `src/data/puzzles/builtin/puzzle-NN.json` following the simplified format above. It will be auto-discovered via glob import — no manual registration needed.
+2. Alternatively, use the built-in Puzzle Editor (accessible from the level selector) to create, test, and save puzzles. Saved puzzles are stored in localStorage.
 
 **Coordinate system:** `row` 0 is top, `col` 0 is left. Vehicles occupy cells from their position extending `length` cells in their `orientation` direction.
 
@@ -86,10 +86,15 @@ Puzzles use a simplified JSON format where redundant fields are auto-generated:
 
 Accessible via the "Create Puzzle" button on the level selector. Features:
 - Grid size, name, and difficulty configuration
-- Tool palette: Player Car, Vehicle (with length/orientation/color), Obstacle (type), Exit, Eraser
+- Tab-based tool palette: Player Car (with orientation/exit side), Vehicle (length/orientation/color), Obstacle (type)
+- **Drag-to-move**: entities can be dragged to reposition; drag outside the grid to delete (shows trash overlay)
+- **Click-to-select**: clicking an entity selects it (gold outline), populates toolbar with its params for editing
+- **Exit auto-placed**: exit is automatically positioned based on player orientation and exit side setting
 - **Test mode**: play the puzzle to verify solvability, records moves for validation
-- **Save**: In dev mode, saves directly to `src/data/puzzles/` via Vite plugin. In production, offers download.
-- **Import**: Load a puzzle JSON file into the editor
+- **Rotate**: Rotate the entire puzzle 90° clockwise (grid dimensions swap, vehicles/obstacles transform)
+- **Save**: Saves to localStorage (appears in level list immediately). Download button exports as JSON file.
+- **Load**: Pick any existing puzzle (builtin or saved) to load into the editor
+- **Import**: Load a puzzle JSON file from disk into the editor
 
 ## Commands
 

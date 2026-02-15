@@ -2,10 +2,10 @@ import type {
   Difficulty, GridSize, Orientation, ObstacleType, Position,
   RawPuzzle, RawVehicle, RawObstacle, VehicleColor, PuzzleMove,
 } from '../types/puzzle';
-import { hydratePuzzle } from '../data/puzzles/index';
+import { hydratePuzzle, rotatePuzzle90CW, getAllPuzzles, savePuzzle } from '../data/puzzles/index';
 import { GameEngine } from '../core/GameEngine';
 
-type EditorTool = 'player' | 'vehicle' | 'obstacle' | 'exit' | 'eraser';
+type EditorTool = 'player' | 'vehicle' | 'obstacle';
 
 const VEHICLE_COLORS: VehicleColor[] = ['blue', 'green', 'yellow', 'purple'];
 const OBSTACLE_TYPES: ObstacleType[] = ['tree', 'sidewalk', 'barrier'];
@@ -29,6 +29,7 @@ export class PuzzleEditor {
   private vehicles: (RawVehicle & { color?: VehicleColor })[] = [];
   private obstacles: RawObstacle[] = [];
   private validation: PuzzleMove[] | null = null;
+  private editId: string | null = null;
 
   // Editor state
   private activeTool: EditorTool = 'player';
@@ -36,9 +37,25 @@ export class PuzzleEditor {
   private vehicleOrientation: Orientation = 'horizontal';
   private vehicleColor: VehicleColor = 'blue';
   private obstacleType: ObstacleType = 'tree';
+  private playerOrientation: Orientation = 'horizontal';
+  private exitSide: 'left' | 'right' | 'up' | 'down' = 'right';
   private cellSize = 0;
   private padding = 8;
   private gap = 4;
+
+  // Selection & drag state
+  private selectedEntity: { type: 'player' | 'vehicle' | 'obstacle'; index: number } | null = null;
+  private editorDragState: {
+    entityType: 'player' | 'vehicle' | 'obstacle';
+    entityIndex: number;
+    origRow: number;
+    origCol: number;
+    startX: number;
+    startY: number;
+    hasMoved: boolean;
+    el: HTMLElement;
+    isOutside: boolean;
+  } | null = null;
 
   // Test mode
   private testEngine: GameEngine | null = null;
@@ -66,6 +83,14 @@ export class PuzzleEditor {
       this.vehicles = editPuzzle.vehicles.map(v => ({ ...v }));
       this.obstacles = editPuzzle.obstacles.map(o => ({ ...o }));
       this.validation = editPuzzle.validation ? [...editPuzzle.validation] : null;
+      this.editId = editPuzzle.id ?? null;
+      if (this.playerCar) {
+        this.playerOrientation = this.playerCar.orientation;
+      }
+      if (this.exit) {
+        const dir = this.deduceDirection(this.exit);
+        this.exitSide = dir as typeof this.exitSide;
+      }
     }
 
     this.render();
@@ -79,11 +104,20 @@ export class PuzzleEditor {
       return;
     }
 
+    const tools: Array<{ id: EditorTool; icon: string; label: string }> = [
+      { id: 'player', icon: '\u{1F697}', label: 'Player' },
+      { id: 'vehicle', icon: '\u{1F699}', label: 'Vehicle' },
+      { id: 'obstacle', icon: '\u{1F332}', label: 'Obstacle' },
+    ];
+
     this.container.innerHTML = `
       <div class="editor-screen">
-        <div class="editor-header">
+        <div class="editor-row editor-name-row">
           <button class="btn back-btn" style="padding:0.4rem 0.8rem;">\u2190</button>
-          <input class="editor-input" type="text" value="${this.escapeHtml(this.name)}" placeholder="Puzzle name" style="flex:1;min-width:100px;">
+          <input class="editor-input editor-name-input" type="text" value="${this.escapeHtml(this.name)}" placeholder="Puzzle name">
+        </div>
+
+        <div class="editor-row editor-settings-row">
           <select class="editor-input" data-field="difficulty">
             ${DIFFICULTIES.map(d => `<option value="${d}" ${d === this.difficulty ? 'selected' : ''}>${d}</option>`).join('')}
           </select>
@@ -93,27 +127,32 @@ export class PuzzleEditor {
           <select class="editor-input" data-field="cols">
             ${[3,4,5,6,7,8].map(n => `<option value="${n}" ${n === this.gridSize.cols ? 'selected' : ''}>${n} cols</option>`).join('')}
           </select>
+          <button class="btn action-btn rotate-btn" title="Rotate 90\u00B0 CW">\u21BB</button>
+          <div class="editor-settings-spacer"></div>
+          <button class="btn action-btn test-btn" ${this.canTest() ? '' : 'disabled'}>Test</button>
+          <button class="btn action-btn save-btn" ${this.canSave() ? '' : 'disabled'}>Save</button>
+          <button class="btn action-btn download-btn" ${this.canSave() ? '' : 'disabled'}>DL</button>
+          <button class="btn action-btn load-btn">Load</button>
+          <label class="btn action-btn import-label">
+            Imp <input type="file" accept=".json" style="display:none;" class="import-input">
+          </label>
         </div>
 
-        <div class="editor-toolbar" data-role="tools">
-          ${this.renderToolButtons()}
+        <div class="editor-tabs" data-role="tabs">
+          ${tools.map(t => `
+            <button class="editor-tab ${this.activeTool === t.id ? 'active' : ''}" data-tool="${t.id}">
+              <span class="tab-icon">${t.icon}</span>
+              <span class="tab-label">${t.label}</span>
+            </button>
+          `).join('')}
         </div>
 
-        <div class="editor-toolbar" data-role="options" style="${this.activeTool === 'vehicle' || this.activeTool === 'obstacle' ? '' : 'display:none;'}">
+        <div class="editor-options-tray" data-role="options">
           ${this.renderOptionsContent()}
         </div>
 
         <div class="editor-canvas">
           <div class="editor-grid"></div>
-        </div>
-
-        <div class="editor-actions">
-          <button class="btn test-btn" ${this.canTest() ? '' : 'disabled'} style="background:var(--secondary);">Test</button>
-          <button class="btn save-btn" ${this.canSave() ? '' : 'disabled'}>Save</button>
-          <button class="btn download-btn" ${this.canSave() ? '' : 'disabled'} style="background:var(--accent);color:var(--text);">Download</button>
-          <label class="btn import-label" style="background:var(--text-light);cursor:pointer;">
-            Import <input type="file" accept=".json" style="display:none;" class="import-input">
-          </label>
         </div>
       </div>
     `;
@@ -122,28 +161,28 @@ export class PuzzleEditor {
     this.layoutGrid();
   }
 
-  private renderToolButtons(): string {
-    const tools: Array<{ id: EditorTool; icon: string; label: string }> = [
-      { id: 'player', icon: '\u{1F697}', label: 'Player' },
-      { id: 'vehicle', icon: '\u{1F699}', label: 'Vehicle' },
-      { id: 'obstacle', icon: '\u{1F332}', label: 'Obstacle' },
-      { id: 'exit', icon: '\u{1F6AA}', label: 'Exit' },
-      { id: 'eraser', icon: '\u{1F9F9}', label: 'Eraser' },
-    ];
-    return tools.map(t =>
-      `<button class="tool-btn ${this.activeTool === t.id ? 'active' : ''}" data-tool="${t.id}">${t.icon} ${t.label}</button>`
-    ).join('');
-  }
-
   private renderOptionsContent(): string {
+    if (this.activeTool === 'player') {
+      const ori = this.playerOrientation;
+      const exitOptions = ori === 'horizontal'
+        ? ['left', 'right'] as const
+        : ['up', 'down'] as const;
+      return `
+        <span class="opt-label">Dir:</span>
+        <button class="opt-btn ${ori === 'horizontal' ? 'active' : ''}" data-pori="horizontal">\u2194</button>
+        <button class="opt-btn ${ori === 'vertical' ? 'active' : ''}" data-pori="vertical">\u2195</button>
+        <span class="opt-label">Exit:</span>
+        ${exitOptions.map(s => `<button class="opt-btn ${this.exitSide === s ? 'active' : ''}" data-exitside="${s}">${s}</button>`).join('')}
+      `;
+    }
     if (this.activeTool === 'vehicle') {
       return `
-        <span style="font-size:0.85rem;font-weight:600;">Length:</span>
-        <button class="tool-btn ${this.vehicleLength === 2 ? 'active' : ''}" data-vlen="2">2</button>
-        <button class="tool-btn ${this.vehicleLength === 3 ? 'active' : ''}" data-vlen="3">3</button>
-        <span style="font-size:0.85rem;font-weight:600;">Dir:</span>
-        <button class="tool-btn ${this.vehicleOrientation === 'horizontal' ? 'active' : ''}" data-vori="horizontal">\u2194</button>
-        <button class="tool-btn ${this.vehicleOrientation === 'vertical' ? 'active' : ''}" data-vori="vertical">\u2195</button>
+        <span class="opt-label">Len:</span>
+        <button class="opt-btn ${this.vehicleLength === 2 ? 'active' : ''}" data-vlen="2">2</button>
+        <button class="opt-btn ${this.vehicleLength === 3 ? 'active' : ''}" data-vlen="3">3</button>
+        <span class="opt-label">Dir:</span>
+        <button class="opt-btn ${this.vehicleOrientation === 'horizontal' ? 'active' : ''}" data-vori="horizontal">\u2194</button>
+        <button class="opt-btn ${this.vehicleOrientation === 'vertical' ? 'active' : ''}" data-vori="vertical">\u2195</button>
         <div class="color-picker">
           ${VEHICLE_COLORS.map(c => `<div class="color-swatch ${c} ${c === this.vehicleColor ? 'selected' : ''}" data-color="${c}"></div>`).join('')}
         </div>
@@ -151,70 +190,126 @@ export class PuzzleEditor {
     }
     if (this.activeTool === 'obstacle') {
       return OBSTACLE_TYPES.map(t =>
-        `<button class="tool-btn ${t === this.obstacleType ? 'active' : ''}" data-obstype="${t}">${OBSTACLE_EMOJI[t]} ${t}</button>`
+        `<button class="opt-btn ${t === this.obstacleType ? 'active' : ''}" data-obstype="${t}">${OBSTACLE_EMOJI[t]} ${t}</button>`
       ).join('');
     }
     return '';
   }
 
-  /** Refresh only the toolbar and options panel without rebuilding the whole DOM. */
   private refreshToolbar(): void {
-    const toolsContainer = this.container.querySelector('[data-role="tools"]');
-    if (toolsContainer) {
-      toolsContainer.innerHTML = this.renderToolButtons();
-      toolsContainer.querySelectorAll('[data-tool]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          this.activeTool = (btn as HTMLElement).dataset.tool as EditorTool;
-          this.refreshToolbar();
-          this.refreshEdgeCells();
-          this.updateActionButtons();
-        });
-      });
-    }
+    this.container.querySelectorAll('.editor-tab').forEach(btn => {
+      const tool = (btn as HTMLElement).dataset.tool as EditorTool;
+      btn.classList.toggle('active', tool === this.activeTool);
+    });
 
     const optionsContainer = this.container.querySelector('[data-role="options"]') as HTMLElement;
     if (optionsContainer) {
-      const showOptions = this.activeTool === 'vehicle' || this.activeTool === 'obstacle';
-      optionsContainer.style.display = showOptions ? '' : 'none';
       optionsContainer.innerHTML = this.renderOptionsContent();
       this.bindOptionEvents(optionsContainer);
     }
   }
 
   private bindOptionEvents(container: Element): void {
+    container.querySelectorAll('[data-pori]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const newOri = (btn as HTMLElement).dataset.pori as Orientation;
+        if (newOri === this.playerOrientation) return;
+        this.playerOrientation = newOri;
+        this.exitSide = newOri === 'horizontal' ? 'right' : 'down';
+        if (this.selectedEntity?.type === 'player' && this.playerCar) {
+          if (this.fitsInGrid(this.playerCar.row, this.playerCar.col, this.playerCar.length, newOri) &&
+              !this.isOccupied(this.playerCar.row, this.playerCar.col, this.playerCar.length, newOri, -1, true)) {
+            this.playerCar.orientation = newOri;
+            this.autoPlaceExit();
+            this.validation = null;
+            this.renderGridEntities();
+          } else {
+            this.showToast('Cannot change orientation — collision or out of bounds');
+          }
+        }
+        this.refreshToolbar();
+      });
+    });
+    container.querySelectorAll('[data-exitside]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.exitSide = (btn as HTMLElement).dataset.exitside as typeof this.exitSide;
+        if (this.playerCar) {
+          this.autoPlaceExit();
+          this.validation = null;
+          this.renderGridEntities();
+          this.updateActionButtons();
+        }
+        this.refreshToolbar();
+      });
+    });
     container.querySelectorAll('[data-vlen]').forEach(btn => {
       btn.addEventListener('click', () => {
-        this.vehicleLength = Number((btn as HTMLElement).dataset.vlen);
+        const newLen = Number((btn as HTMLElement).dataset.vlen);
+        this.vehicleLength = newLen;
+        if (this.selectedEntity?.type === 'vehicle') {
+          const v = this.vehicles[this.selectedEntity.index];
+          if (v && newLen !== v.length) {
+            if (this.fitsInGrid(v.row, v.col, newLen, v.orientation) &&
+                !this.isOccupied(v.row, v.col, newLen, v.orientation, this.selectedEntity.index)) {
+              v.length = newLen;
+              this.validation = null;
+              this.renderGridEntities();
+            } else {
+              this.showToast('Cannot change length — collision or out of bounds');
+            }
+          }
+        }
         this.refreshToolbar();
       });
     });
     container.querySelectorAll('[data-vori]').forEach(btn => {
       btn.addEventListener('click', () => {
-        this.vehicleOrientation = (btn as HTMLElement).dataset.vori as Orientation;
+        const newOri = (btn as HTMLElement).dataset.vori as Orientation;
+        this.vehicleOrientation = newOri;
+        if (this.selectedEntity?.type === 'vehicle') {
+          const v = this.vehicles[this.selectedEntity.index];
+          if (v && newOri !== v.orientation) {
+            if (this.fitsInGrid(v.row, v.col, v.length, newOri) &&
+                !this.isOccupied(v.row, v.col, v.length, newOri, this.selectedEntity.index)) {
+              v.orientation = newOri;
+              this.validation = null;
+              this.renderGridEntities();
+            } else {
+              this.showToast('Cannot change orientation — collision or out of bounds');
+            }
+          }
+        }
         this.refreshToolbar();
       });
     });
     container.querySelectorAll('[data-color]').forEach(el => {
       el.addEventListener('click', () => {
-        this.vehicleColor = (el as HTMLElement).dataset.color as VehicleColor;
+        const newColor = (el as HTMLElement).dataset.color as VehicleColor;
+        this.vehicleColor = newColor;
+        if (this.selectedEntity?.type === 'vehicle') {
+          const v = this.vehicles[this.selectedEntity.index];
+          if (v) {
+            v.color = newColor;
+            this.renderGridEntities();
+          }
+        }
         this.refreshToolbar();
       });
     });
     container.querySelectorAll('[data-obstype]').forEach(btn => {
       btn.addEventListener('click', () => {
-        this.obstacleType = (btn as HTMLElement).dataset.obstype as ObstacleType;
+        const newType = (btn as HTMLElement).dataset.obstype as ObstacleType;
+        this.obstacleType = newType;
+        if (this.selectedEntity?.type === 'obstacle') {
+          const o = this.obstacles[this.selectedEntity.index];
+          if (o) {
+            o.type = newType;
+            this.validation = null;
+            this.renderGridEntities();
+          }
+        }
         this.refreshToolbar();
       });
-    });
-  }
-
-  private refreshEdgeCells(): void {
-    this.container.querySelectorAll('.editor-cell').forEach(el => {
-      const cell = el as HTMLElement;
-      const r = Number(cell.dataset.row);
-      const c = Number(cell.dataset.col);
-      const isEdge = r === 0 || r === this.gridSize.rows - 1 || c === 0 || c === this.gridSize.cols - 1;
-      cell.classList.toggle('edge-cell', this.activeTool === 'exit' && isEdge);
     });
   }
 
@@ -230,7 +325,7 @@ export class PuzzleEditor {
   private bindEvents(): void {
     this.container.querySelector('.back-btn')!.addEventListener('click', this.onBack);
 
-    const nameInput = this.container.querySelector('input[type="text"]') as HTMLInputElement;
+    const nameInput = this.container.querySelector('.editor-name-input') as HTMLInputElement;
     nameInput.addEventListener('input', () => {
       this.name = nameInput.value;
       this.updateActionButtons();
@@ -252,13 +347,13 @@ export class PuzzleEditor {
       this.layoutGrid();
     });
 
-    // Tool buttons
-    this.container.querySelectorAll('[data-tool]').forEach(btn => {
+    // Tab buttons
+    this.container.querySelectorAll('.editor-tab').forEach(btn => {
       btn.addEventListener('click', () => {
+        this.selectedEntity = null;
         this.activeTool = (btn as HTMLElement).dataset.tool as EditorTool;
         this.refreshToolbar();
-        this.refreshEdgeCells();
-        this.updateActionButtons();
+        this.renderGridEntities();
       });
     });
 
@@ -271,44 +366,38 @@ export class PuzzleEditor {
     this.container.querySelector('.save-btn')?.addEventListener('click', () => this.save());
     this.container.querySelector('.download-btn')?.addEventListener('click', () => this.download());
     this.container.querySelector('.import-input')?.addEventListener('change', (e) => this.importFile(e));
+    this.container.querySelector('.rotate-btn')?.addEventListener('click', () => this.rotatePuzzle());
+    this.container.querySelector('.load-btn')?.addEventListener('click', () => this.showLoadDialog());
   }
 
   // ==================== Grid Layout & Rendering ====================
 
-  /** Rebuild grid cells and compute cell size to fit available space. */
   private layoutGrid(): void {
     const grid = this.container.querySelector('.editor-grid') as HTMLElement;
     if (!grid) return;
 
     grid.innerHTML = '';
 
-    // Compute available space for the grid
     requestAnimationFrame(() => {
       const canvas = this.container.querySelector('.editor-canvas') as HTMLElement;
       if (!canvas) return;
 
       const canvasRect = canvas.getBoundingClientRect();
-      const availW = canvasRect.width - 32; // some padding
+      const availW = canvasRect.width - 32;
       const availH = canvasRect.height - 16;
 
       const { rows, cols } = this.gridSize;
       const gridPadding = this.padding * 2;
       const gapTotal = (val: number, count: number) => (count - 1) * val;
 
-      // Solve: gridPadding + cols * cellSize + (cols-1) * gap <= availW
-      // and:   gridPadding + rows * cellSize + (rows-1) * gap <= availH
-      // gap ~= cellSize * 0.06 (approx ratio from CSS)
-      // Let's try with gap = 4 first, compute cell size, then refine
       const gapEst = 4;
       const cellW = (availW - gridPadding - gapTotal(gapEst, cols)) / cols;
       const cellH = (availH - gridPadding - gapTotal(gapEst, rows)) / rows;
-      const computedCellSize = Math.max(24, Math.min(80, Math.floor(Math.min(cellW, cellH))));
+      const computedCellSize = Math.max(24, Math.min(100, Math.floor(Math.min(cellW, cellH))));
 
-      // Apply the computed cell size directly on the grid
       grid.style.gridTemplateRows = `repeat(${rows}, ${computedCellSize}px)`;
       grid.style.gridTemplateColumns = `repeat(${cols}, ${computedCellSize}px)`;
 
-      // Create cells
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const cell = document.createElement('div');
@@ -318,23 +407,28 @@ export class PuzzleEditor {
           cell.dataset.row = String(r);
           cell.dataset.col = String(c);
 
-          const isEdge = r === 0 || r === rows - 1 || c === 0 || c === cols - 1;
-          if (this.activeTool === 'exit' && isEdge) {
-            cell.classList.add('edge-cell');
-          }
-
           cell.addEventListener('click', () => this.onCellClick(r, c));
           grid.appendChild(cell);
         }
       }
 
-      // Read actual cell size
       const firstCell = grid.querySelector('.editor-cell') as HTMLElement;
       if (firstCell) {
         this.cellSize = firstCell.offsetWidth;
         this.gap = parseFloat(getComputedStyle(grid).gap) || 4;
         this.padding = parseFloat(getComputedStyle(grid).paddingLeft) || 8;
       }
+
+      // Bind editor drag events
+      grid.removeEventListener('pointerdown', this.onEditorPointerDown);
+      grid.removeEventListener('pointermove', this.onEditorPointerMove);
+      grid.removeEventListener('pointerup', this.onEditorPointerUp);
+      grid.removeEventListener('pointercancel', this.onEditorPointerUp);
+      grid.addEventListener('pointerdown', this.onEditorPointerDown);
+      grid.addEventListener('pointermove', this.onEditorPointerMove);
+      grid.addEventListener('pointerup', this.onEditorPointerUp);
+      grid.addEventListener('pointercancel', this.onEditorPointerUp);
+      grid.style.touchAction = 'none';
 
       this.renderEntities(grid);
     });
@@ -345,7 +439,6 @@ export class PuzzleEditor {
   }
 
   private renderEntities(grid: HTMLElement): void {
-    // Remove old entities
     grid.querySelectorAll('.editor-entity, .editor-exit-marker').forEach(el => el.remove());
 
     // Exit marker
@@ -389,27 +482,36 @@ export class PuzzleEditor {
     if (this.playerCar) {
       const el = this.createEntityEl('player', this.playerCar.row, this.playerCar.col,
         this.playerCar.length, this.playerCar.orientation);
-      el.classList.add('player');
+      el.classList.add('player', 'interactive');
+      el.dataset.entityType = 'player';
+      el.dataset.entityIndex = '0';
       el.textContent = '\u{1F440}';
+      if (this.selectedEntity?.type === 'player') el.classList.add('selected');
       grid.appendChild(el);
     }
 
     // Vehicles
     this.vehicles.forEach((v, i) => {
       const el = this.createEntityEl(`vehicle-${i}`, v.row, v.col, v.length, v.orientation);
-      el.classList.add(`color-${v.color ?? 'blue'}`);
+      el.classList.add(`color-${v.color ?? 'blue'}`, 'interactive');
+      el.dataset.entityType = 'vehicle';
+      el.dataset.entityIndex = String(i);
+      if (this.selectedEntity?.type === 'vehicle' && this.selectedEntity.index === i) el.classList.add('selected');
       grid.appendChild(el);
     });
 
     // Obstacles
-    this.obstacles.forEach((o) => {
+    this.obstacles.forEach((o, i) => {
       const el = document.createElement('div');
-      el.className = 'editor-entity obstacle';
+      el.className = 'editor-entity obstacle interactive';
       el.style.left = `${this.cellToPixel(o.col)}px`;
       el.style.top = `${this.cellToPixel(o.row)}px`;
       el.style.width = `${this.cellSize}px`;
       el.style.height = `${this.cellSize}px`;
       el.textContent = OBSTACLE_EMOJI[o.type] ?? '\u{1F6A7}';
+      el.dataset.entityType = 'obstacle';
+      el.dataset.entityIndex = String(i);
+      if (this.selectedEntity?.type === 'obstacle' && this.selectedEntity.index === i) el.classList.add('selected');
       grid.appendChild(el);
     });
   }
@@ -439,9 +541,258 @@ export class PuzzleEditor {
     return 'up';
   }
 
+  // ==================== Editor Drag & Selection ====================
+
+  private isPointerOutsideGrid(clientX: number, clientY: number): boolean {
+    const grid = this.container.querySelector('.editor-grid') as HTMLElement;
+    if (!grid) return true;
+    const rect = grid.getBoundingClientRect();
+    const margin = 20;
+    return clientX < rect.left - margin || clientX > rect.right + margin ||
+           clientY < rect.top - margin || clientY > rect.bottom + margin;
+  }
+
+  private onEditorPointerDown = (e: PointerEvent): void => {
+    if (this.testMode) return;
+    const target = (e.target as HTMLElement).closest('.editor-entity.interactive') as HTMLElement | null;
+    if (!target) return;
+
+    const entityType = target.dataset.entityType as 'player' | 'vehicle' | 'obstacle';
+    const entityIndex = Number(target.dataset.entityIndex);
+
+    let origRow: number, origCol: number;
+    if (entityType === 'player' && this.playerCar) {
+      origRow = this.playerCar.row;
+      origCol = this.playerCar.col;
+    } else if (entityType === 'vehicle') {
+      origRow = this.vehicles[entityIndex].row;
+      origCol = this.vehicles[entityIndex].col;
+    } else if (entityType === 'obstacle') {
+      origRow = this.obstacles[entityIndex].row;
+      origCol = this.obstacles[entityIndex].col;
+    } else {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    target.setPointerCapture(e.pointerId);
+
+    this.editorDragState = {
+      entityType,
+      entityIndex,
+      origRow,
+      origCol,
+      startX: e.clientX,
+      startY: e.clientY,
+      hasMoved: false,
+      el: target,
+      isOutside: false,
+    };
+
+    target.classList.add('dragging');
+  };
+
+  private onEditorPointerMove = (e: PointerEvent): void => {
+    const ds = this.editorDragState;
+    if (!ds) return;
+    e.preventDefault();
+
+    const dx = e.clientX - ds.startX;
+    const dy = e.clientY - ds.startY;
+    const dist = Math.abs(dx) + Math.abs(dy);
+
+    if (!ds.hasMoved && dist < 5) return;
+    ds.hasMoved = true;
+
+    const outside = this.isPointerOutsideGrid(e.clientX, e.clientY);
+    ds.isOutside = outside;
+
+    if (outside) {
+      ds.el.classList.add('delete-preview');
+      ds.el.classList.remove('invalid-drop');
+      const step = this.cellSize + this.gap;
+      ds.el.style.left = `${this.cellToPixel(ds.origCol + Math.round(dx / step))}px`;
+      ds.el.style.top = `${this.cellToPixel(ds.origRow + Math.round(dy / step))}px`;
+      return;
+    }
+
+    ds.el.classList.remove('delete-preview');
+
+    const step = this.cellSize + this.gap;
+    const cellDx = Math.round(dx / step);
+    const cellDy = Math.round(dy / step);
+    const newRow = ds.origRow + cellDy;
+    const newCol = ds.origCol + cellDx;
+
+    const valid = this.isValidEntityPosition(ds.entityType, ds.entityIndex, newRow, newCol);
+
+    ds.el.style.left = `${this.cellToPixel(newCol)}px`;
+    ds.el.style.top = `${this.cellToPixel(newRow)}px`;
+
+    ds.el.classList.toggle('invalid-drop', !valid);
+  };
+
+  private onEditorPointerUp = (e: PointerEvent): void => {
+    const ds = this.editorDragState;
+    if (!ds) return;
+
+    ds.el.classList.remove('dragging', 'invalid-drop', 'delete-preview');
+    this.editorDragState = null;
+
+    if (!ds.hasMoved) {
+      this.selectEntity(ds.entityType, ds.entityIndex);
+      return;
+    }
+
+    if (ds.isOutside) {
+      this.deleteEntity(ds.entityType, ds.entityIndex);
+      return;
+    }
+
+    const dx = e.clientX - ds.startX;
+    const dy = e.clientY - ds.startY;
+    const step = this.cellSize + this.gap;
+    const newRow = ds.origRow + Math.round(dy / step);
+    const newCol = ds.origCol + Math.round(dx / step);
+
+    if (this.isValidEntityPosition(ds.entityType, ds.entityIndex, newRow, newCol)) {
+      if (ds.entityType === 'player' && this.playerCar) {
+        this.playerCar.row = newRow;
+        this.playerCar.col = newCol;
+        this.autoPlaceExit();
+      } else if (ds.entityType === 'vehicle') {
+        this.vehicles[ds.entityIndex].row = newRow;
+        this.vehicles[ds.entityIndex].col = newCol;
+      } else if (ds.entityType === 'obstacle') {
+        this.obstacles[ds.entityIndex].row = newRow;
+        this.obstacles[ds.entityIndex].col = newCol;
+      }
+      this.validation = null;
+    }
+    this.renderGridEntities();
+    this.updateActionButtons();
+  };
+
+  private deleteEntity(entityType: string, entityIndex: number): void {
+    if (entityType === 'player') {
+      this.playerCar = null;
+      this.exit = null;
+    } else if (entityType === 'vehicle') {
+      this.vehicles.splice(entityIndex, 1);
+      if (this.selectedEntity?.type === 'vehicle') {
+        if (this.selectedEntity.index === entityIndex) {
+          this.selectedEntity = null;
+        } else if (this.selectedEntity.index > entityIndex) {
+          this.selectedEntity.index--;
+        }
+      }
+    } else if (entityType === 'obstacle') {
+      this.obstacles.splice(entityIndex, 1);
+      if (this.selectedEntity?.type === 'obstacle') {
+        if (this.selectedEntity.index === entityIndex) {
+          this.selectedEntity = null;
+        } else if (this.selectedEntity.index > entityIndex) {
+          this.selectedEntity.index--;
+        }
+      }
+    }
+    this.validation = null;
+    this.renderGridEntities();
+    this.updateActionButtons();
+    this.showToast('Deleted');
+  }
+
+  private isValidEntityPosition(entityType: string, entityIndex: number, row: number, col: number): boolean {
+    if (entityType === 'player' && this.playerCar) {
+      return this.fitsInGrid(row, col, this.playerCar.length, this.playerCar.orientation) &&
+        !this.isOccupied(row, col, this.playerCar.length, this.playerCar.orientation, -1, true);
+    } else if (entityType === 'vehicle') {
+      const v = this.vehicles[entityIndex];
+      return this.fitsInGrid(row, col, v.length, v.orientation) &&
+        !this.isOccupied(row, col, v.length, v.orientation, entityIndex);
+    } else if (entityType === 'obstacle') {
+      return row >= 0 && row < this.gridSize.rows && col >= 0 && col < this.gridSize.cols &&
+        !this.isOccupied(row, col, 1, 'horizontal', -1, false, entityIndex);
+    }
+    return false;
+  }
+
+  private selectEntity(type: 'player' | 'vehicle' | 'obstacle', index: number): void {
+    if (this.selectedEntity?.type === type && this.selectedEntity.index === index) {
+      this.selectedEntity = null;
+      this.refreshToolbar();
+      this.renderGridEntities();
+      return;
+    }
+
+    this.selectedEntity = { type, index };
+
+    if (type === 'player') {
+      this.activeTool = 'player';
+      if (this.playerCar) {
+        this.playerOrientation = this.playerCar.orientation;
+        if (this.exit) {
+          const dir = this.deduceDirection(this.exit);
+          this.exitSide = dir as typeof this.exitSide;
+        }
+      }
+    } else if (type === 'vehicle') {
+      this.activeTool = 'vehicle';
+      const v = this.vehicles[index];
+      if (v) {
+        this.vehicleLength = v.length;
+        this.vehicleOrientation = v.orientation;
+        this.vehicleColor = v.color ?? 'blue';
+      }
+    } else if (type === 'obstacle') {
+      this.activeTool = 'obstacle';
+      const o = this.obstacles[index];
+      if (o) {
+        this.obstacleType = o.type;
+      }
+    }
+
+    this.refreshToolbar();
+    this.renderGridEntities();
+  }
+
+  private autoPlaceExit(): void {
+    if (!this.playerCar) return;
+    const { row, col, orientation } = this.playerCar;
+    if (orientation === 'horizontal') {
+      if (this.exitSide === 'right') {
+        this.exit = { row, col: this.gridSize.cols - 1 };
+      } else {
+        this.exit = { row, col: 0 };
+      }
+    } else {
+      if (this.exitSide === 'down') {
+        this.exit = { row: this.gridSize.rows - 1, col };
+      } else {
+        this.exit = { row: 0, col };
+      }
+    }
+  }
+
+  private showToast(message: string): void {
+    document.querySelectorAll('.editor-toast').forEach(el => el.remove());
+    const toast = document.createElement('div');
+    toast.className = 'editor-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+  }
+
   // ==================== Cell Click Handlers ====================
 
   private onCellClick(row: number, col: number): void {
+    if (this.selectedEntity) {
+      this.selectedEntity = null;
+      this.refreshToolbar();
+      this.renderGridEntities();
+      return;
+    }
     switch (this.activeTool) {
       case 'player':
         this.placePlayer(row, col);
@@ -452,19 +803,15 @@ export class PuzzleEditor {
       case 'obstacle':
         this.placeObstacle(row, col);
         break;
-      case 'exit':
-        this.placeExit(row, col);
-        break;
-      case 'eraser':
-        this.eraseAt(row, col);
-        break;
     }
   }
 
   private placePlayer(row: number, col: number): void {
-    if (!this.fitsInGrid(row, col, 2, 'horizontal')) return;
-    if (this.isOccupied(row, col, 2, 'horizontal', -1, true)) return;
-    this.playerCar = { row, col, length: 2, orientation: 'horizontal' };
+    const ori = this.playerOrientation;
+    if (!this.fitsInGrid(row, col, 2, ori)) return;
+    if (this.isOccupied(row, col, 2, ori, -1, true)) return;
+    this.playerCar = { row, col, length: 2, orientation: ori };
+    this.autoPlaceExit();
     this.validation = null;
     this.renderGridEntities();
     this.updateActionButtons();
@@ -490,49 +837,6 @@ export class PuzzleEditor {
     this.renderGridEntities();
   }
 
-  private placeExit(row: number, col: number): void {
-    const isEdge = row === 0 || row === this.gridSize.rows - 1 ||
-                   col === 0 || col === this.gridSize.cols - 1;
-    if (!isEdge) return;
-    this.exit = { row, col };
-    this.validation = null;
-    this.renderGridEntities();
-    this.updateActionButtons();
-  }
-
-  private eraseAt(row: number, col: number): void {
-    if (this.playerCar && this.occupiesCells(this.playerCar.row, this.playerCar.col, this.playerCar.length, this.playerCar.orientation).some(p => p.row === row && p.col === col)) {
-      this.playerCar = null;
-      this.validation = null;
-      this.renderGridEntities();
-      this.updateActionButtons();
-      return;
-    }
-    for (let i = this.vehicles.length - 1; i >= 0; i--) {
-      const v = this.vehicles[i];
-      if (this.occupiesCells(v.row, v.col, v.length, v.orientation).some(p => p.row === row && p.col === col)) {
-        this.vehicles.splice(i, 1);
-        this.validation = null;
-        this.renderGridEntities();
-        return;
-      }
-    }
-    for (let i = this.obstacles.length - 1; i >= 0; i--) {
-      if (this.obstacles[i].row === row && this.obstacles[i].col === col) {
-        this.obstacles.splice(i, 1);
-        this.validation = null;
-        this.renderGridEntities();
-        return;
-      }
-    }
-    if (this.exit && this.exit.row === row && this.exit.col === col) {
-      this.exit = null;
-      this.validation = null;
-      this.renderGridEntities();
-      this.updateActionButtons();
-    }
-  }
-
   // ==================== Helpers ====================
 
   private occupiesCells(row: number, col: number, length: number, orientation: Orientation): Position[] {
@@ -551,7 +855,7 @@ export class PuzzleEditor {
     return cells.every(c => c.row >= 0 && c.row < this.gridSize.rows && c.col >= 0 && c.col < this.gridSize.cols);
   }
 
-  private isOccupied(row: number, col: number, length: number, orientation: Orientation, skipVehicleIdx = -1, skipPlayer = false): boolean {
+  private isOccupied(row: number, col: number, length: number, orientation: Orientation, skipVehicleIdx = -1, skipPlayer = false, skipObstacleIdx = -1): boolean {
     const cells = this.occupiesCells(row, col, length, orientation);
     const occupied = new Set<string>();
 
@@ -564,7 +868,10 @@ export class PuzzleEditor {
       this.occupiesCells(v.row, v.col, v.length, v.orientation)
         .forEach(p => occupied.add(`${p.row},${p.col}`));
     });
-    this.obstacles.forEach(o => occupied.add(`${o.row},${o.col}`));
+    this.obstacles.forEach((o, i) => {
+      if (i === skipObstacleIdx) return;
+      occupied.add(`${o.row},${o.col}`);
+    });
 
     return cells.some(c => occupied.has(`${c.row},${c.col}`));
   }
@@ -589,6 +896,97 @@ export class PuzzleEditor {
     return !!this.playerCar && !!this.exit && this.name.trim().length > 0;
   }
 
+  // ==================== Rotation ====================
+
+  private rotatePuzzle(): void {
+    if (!this.playerCar || !this.exit) {
+      this.showToast('Place a player car first');
+      return;
+    }
+
+    const raw = this.buildPuzzle();
+    const rotated = rotatePuzzle90CW(raw);
+
+    this.name = rotated.name;
+    this.difficulty = rotated.difficulty;
+    this.gridSize = { ...rotated.gridSize };
+    this.exit = { ...rotated.exit };
+    this.playerCar = { ...rotated.playerCar };
+    this.vehicles = rotated.vehicles.map(v => ({ ...v }));
+    this.obstacles = rotated.obstacles.map(o => ({ ...o }));
+    this.validation = rotated.validation ? [...rotated.validation] : null;
+
+    if (this.playerCar) {
+      this.playerOrientation = this.playerCar.orientation;
+    }
+    if (this.exit) {
+      this.exitSide = this.deduceDirection(this.exit) as typeof this.exitSide;
+    }
+
+    this.selectedEntity = null;
+    this.render();
+    this.showToast('Rotated 90\u00B0 CW');
+  }
+
+  // ==================== Load Dialog ====================
+
+  private showLoadDialog(): void {
+    const puzzles = getAllPuzzles();
+    if (puzzles.length === 0) {
+      this.showToast('No puzzles available');
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'load-dialog-overlay';
+    overlay.innerHTML = `
+      <div class="load-dialog">
+        <h3>Load Puzzle</h3>
+        <div class="load-dialog-list"></div>
+        <button class="btn" style="background:var(--text-light);">Cancel</button>
+      </div>
+    `;
+
+    const list = overlay.querySelector('.load-dialog-list')!;
+    for (const p of puzzles) {
+      const item = document.createElement('button');
+      item.className = 'load-dialog-item';
+      item.textContent = `${p.name} (${p.gridSize.rows}\u00D7${p.gridSize.cols} \u2022 ${p.difficulty})`;
+      item.addEventListener('click', () => {
+        this.loadPuzzleById(p);
+        overlay.remove();
+      });
+      list.appendChild(item);
+    }
+
+    overlay.querySelector('.btn')!.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  private loadPuzzleById(puzzle: { id: string; name: string; difficulty: Difficulty; gridSize: GridSize; exit: { row: number; col: number; direction: string }; playerCar: { id: string; row: number; col: number; length: number; orientation: Orientation }; vehicles: Array<{ id: string; row: number; col: number; length: number; orientation: Orientation; color?: VehicleColor }>; obstacles: Array<{ id: string; row: number; col: number; type: ObstacleType }>; validation?: PuzzleMove[] }): void {
+    this.name = puzzle.name;
+    this.difficulty = puzzle.difficulty;
+    this.gridSize = { ...puzzle.gridSize };
+    this.exit = { row: puzzle.exit.row, col: puzzle.exit.col };
+    this.playerCar = { row: puzzle.playerCar.row, col: puzzle.playerCar.col, length: puzzle.playerCar.length, orientation: puzzle.playerCar.orientation };
+    this.vehicles = puzzle.vehicles.map(v => ({ row: v.row, col: v.col, length: v.length, orientation: v.orientation, color: v.color }));
+    this.obstacles = puzzle.obstacles.map(o => ({ row: o.row, col: o.col, type: o.type }));
+    this.validation = puzzle.validation ? [...puzzle.validation] : null;
+    this.editId = null; // Loading creates a new puzzle
+    if (this.playerCar) {
+      this.playerOrientation = this.playerCar.orientation;
+    }
+    if (this.exit) {
+      this.exitSide = this.deduceDirection(this.exit) as typeof this.exitSide;
+    }
+    this.selectedEntity = null;
+    this.render();
+  }
+
   // ==================== Test Mode ====================
 
   private startTest(): void {
@@ -609,7 +1007,7 @@ export class PuzzleEditor {
 
     this.container.innerHTML = `
       <div class="editor-screen">
-        <div class="editor-header">
+        <div class="editor-row editor-name-row">
           <button class="btn stop-test-btn" style="padding:0.4rem 0.8rem;background:var(--primary);">Stop Test</button>
           <span class="move-counter">Moves: 0</span>
           <button class="btn reset-test-btn" style="padding:0.4rem 0.8rem;">\u21BB</button>
@@ -617,7 +1015,7 @@ export class PuzzleEditor {
         <div class="editor-canvas">
           <div class="board"></div>
         </div>
-        <div class="editor-actions">
+        <div class="editor-row" style="justify-content:center;">
           <button class="btn save-validation-btn" disabled style="background:var(--vehicle-green);">Save as Validation</button>
         </div>
       </div>
@@ -626,7 +1024,6 @@ export class PuzzleEditor {
     const board = this.container.querySelector('.board') as HTMLElement;
     board.style.touchAction = 'none';
 
-    // Compute cell size to fit
     requestAnimationFrame(() => {
       const canvas = this.container.querySelector('.editor-canvas') as HTMLElement;
       if (!canvas) return;
@@ -638,12 +1035,11 @@ export class PuzzleEditor {
       const gridPad = 8 * 2;
       const cellW = (availW - gridPad - (cols - 1) * gapEst) / cols;
       const cellH = (availH - gridPad - (rows - 1) * gapEst) / rows;
-      const computedCellSize = Math.max(24, Math.min(80, Math.floor(Math.min(cellW, cellH))));
+      const computedCellSize = Math.max(24, Math.min(100, Math.floor(Math.min(cellW, cellH))));
 
       board.style.gridTemplateRows = `repeat(${rows}, ${computedCellSize}px)`;
       board.style.gridTemplateColumns = `repeat(${cols}, ${computedCellSize}px)`;
 
-      // Render cells
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const cell = document.createElement('div');
@@ -654,7 +1050,6 @@ export class PuzzleEditor {
         }
       }
 
-      // Exit marker
       const exit = puzzle.exit;
       const marker = document.createElement('div');
       marker.className = `exit-marker ${exit.direction}`;
@@ -662,7 +1057,6 @@ export class PuzzleEditor {
       marker.dataset.col = String(exit.col);
       board.appendChild(marker);
 
-      // Obstacles
       for (const obs of puzzle.obstacles) {
         const el = document.createElement('div');
         el.className = 'obstacle';
@@ -672,7 +1066,6 @@ export class PuzzleEditor {
         board.appendChild(el);
       }
 
-      // Vehicles
       const renderVehicle = (v: { id: string; orientation: Orientation; color?: VehicleColor }, isPlayer: boolean) => {
         const el = document.createElement('div');
         el.className = `vehicle ${isPlayer ? 'player' : `color-${v.color ?? 'blue'}`}`;
@@ -689,7 +1082,6 @@ export class PuzzleEditor {
       renderVehicle(puzzle.playerCar, true);
       puzzle.vehicles.forEach(v => renderVehicle(v, false));
 
-      // Read actual cell size
       const firstCell = board.querySelector('.cell') as HTMLElement;
       if (firstCell) {
         this.cellSize = firstCell.offsetWidth;
@@ -699,19 +1091,16 @@ export class PuzzleEditor {
       this.updateTestPositions(board);
     });
 
-    // Pointer events
     board.addEventListener('pointerdown', this.onTestPointerDown);
     board.addEventListener('pointermove', this.onTestPointerMove);
     board.addEventListener('pointerup', this.onTestPointerUp);
     board.addEventListener('pointercancel', this.onTestPointerUp);
 
-    // Subscribe to engine changes
     this.testEngine.subscribe(() => {
       const b = this.container.querySelector('.board') as HTMLElement;
       if (b) this.updateTestPositions(b);
     });
 
-    // Buttons
     this.container.querySelector('.stop-test-btn')!.addEventListener('click', () => {
       this.testMode = false;
       this.testEngine = null;
@@ -753,7 +1142,6 @@ export class PuzzleEditor {
       el.style.height = `${h}px`;
     }
 
-    // Obstacles
     board.querySelectorAll('.obstacle').forEach(el => {
       const obsEl = el as HTMLElement;
       obsEl.style.left = `${this.cellToPixel(Number(obsEl.dataset.col))}px`;
@@ -762,7 +1150,6 @@ export class PuzzleEditor {
       obsEl.style.height = `${this.cellSize}px`;
     });
 
-    // Exit marker
     const exitEl = board.querySelector('.exit-marker') as HTMLElement;
     if (exitEl) {
       exitEl.style.top = `${this.cellToPixel(puzzle.exit.row)}px`;
@@ -861,6 +1248,11 @@ export class PuzzleEditor {
     return puzzle;
   }
 
+  private generateId(): string {
+    const slug = this.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return `saved-${slug || 'untitled'}`;
+  }
+
   private generateFilename(): string {
     const slug = this.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return `puzzle-${slug || 'untitled'}.json`;
@@ -870,27 +1262,11 @@ export class PuzzleEditor {
     if (!this.canSave()) return;
 
     const puzzle = this.buildPuzzle();
-    const filename = this.generateFilename();
+    const id = this.editId ?? this.generateId();
 
-    if (import.meta.env.DEV) {
-      try {
-        const res = await fetch('/__api/puzzles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename, puzzle }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          alert(`Saved as ${data.filename}. Add the import to src/data/puzzles/index.ts to include it.`);
-        } else {
-          alert(`Error: ${data.error}`);
-        }
-      } catch (err) {
-        alert(`Failed to save: ${(err as Error).message}`);
-      }
-    } else {
-      this.download();
-    }
+    savePuzzle(id, puzzle);
+    this.editId = id;
+    this.showToast('Saved!');
   }
 
   private download(): void {
@@ -925,6 +1301,13 @@ export class PuzzleEditor {
         this.vehicles = raw.vehicles.map(v => ({ ...v }));
         this.obstacles = raw.obstacles.map(o => ({ ...o }));
         this.validation = raw.validation ? [...raw.validation] : null;
+        this.editId = null;
+        if (this.playerCar) {
+          this.playerOrientation = this.playerCar.orientation;
+        }
+        if (this.exit) {
+          this.exitSide = this.deduceDirection(this.exit) as typeof this.exitSide;
+        }
         this.render();
       } catch {
         alert('Invalid puzzle file.');

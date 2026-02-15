@@ -38,17 +38,14 @@ export class GameRenderer {
     const { rows, cols } = puzzle.gridSize;
 
     this.container.innerHTML = `
-      <div class="screen" style="justify-content: flex-start; padding-top: 2rem;">
+      <div class="game-screen">
         <div class="game-header">
           <button class="btn back-btn" style="padding: 0.5rem 1rem;">\u2190</button>
           <span class="move-counter">Moves: 0</span>
           <button class="btn reset-btn" style="padding: 0.5rem 1rem;">\u21BB</button>
         </div>
-        <div class="board-wrapper">
-          <div class="board" style="
-            grid-template-rows: repeat(${rows}, var(--cell-size));
-            grid-template-columns: repeat(${cols}, var(--cell-size));
-          "></div>
+        <div class="game-canvas">
+          <div class="board"></div>
         </div>
       </div>
     `;
@@ -59,7 +56,7 @@ export class GameRenderer {
     this.container.querySelector('.back-btn')!.addEventListener('click', this.onBack);
     this.container.querySelector('.reset-btn')!.addEventListener('click', () => this.engine.reset());
 
-    // Render grid cells
+    // Render grid cells (no inline size — will be set dynamically)
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const cell = document.createElement('div');
@@ -77,7 +74,6 @@ export class GameRenderer {
       el.className = 'obstacle';
       el.textContent = OBSTACLE_EMOJI[obs.type] ?? '\u{1F6A7}';
       this.boardInner.appendChild(el);
-      // Position will be set after cellSize is computed
       el.dataset.row = String(obs.row);
       el.dataset.col = String(obs.col);
     }
@@ -88,7 +84,7 @@ export class GameRenderer {
 
     // Compute cell size after layout
     requestAnimationFrame(() => {
-      this.computeCellSize();
+      this.computeAndApplyCellSize();
       this.updatePositions();
     });
 
@@ -121,13 +117,35 @@ export class GameRenderer {
     this.boardInner.appendChild(el);
   }
 
-  private computeCellSize(): void {
-    const firstCell = this.boardInner.querySelector('.cell') as HTMLElement;
-    if (firstCell) {
-      this.cellSize = firstCell.offsetWidth;
-      this.gap = parseFloat(getComputedStyle(this.boardInner).gap) || 4;
-      this.padding = parseFloat(getComputedStyle(this.boardInner).paddingLeft) || 8;
-    }
+  private computeAndApplyCellSize(): void {
+    const canvas = this.container.querySelector('.game-canvas') as HTMLElement;
+    if (!canvas) return;
+
+    const { puzzle } = this.engine.getState();
+    const { rows, cols } = puzzle.gridSize;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const availW = canvasRect.width - 32;
+    const availH = canvasRect.height - 16;
+
+    const gapEst = 4;
+    const gridPad = this.padding * 2;
+    const cellW = (availW - gridPad - (cols - 1) * gapEst) / cols;
+    const cellH = (availH - gridPad - (rows - 1) * gapEst) / rows;
+    const computedCellSize = Math.max(24, Math.min(100, Math.floor(Math.min(cellW, cellH))));
+
+    this.boardInner.style.gridTemplateRows = `repeat(${rows}, ${computedCellSize}px)`;
+    this.boardInner.style.gridTemplateColumns = `repeat(${cols}, ${computedCellSize}px)`;
+
+    // Set cell sizes explicitly
+    this.boardInner.querySelectorAll('.cell').forEach(cell => {
+      (cell as HTMLElement).style.width = `${computedCellSize}px`;
+      (cell as HTMLElement).style.height = `${computedCellSize}px`;
+    });
+
+    this.cellSize = computedCellSize;
+    this.gap = parseFloat(getComputedStyle(this.boardInner).gap) || 4;
+    this.padding = parseFloat(getComputedStyle(this.boardInner).paddingLeft) || 8;
   }
 
   private cellToPixel(index: number): number {

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 function puzzleEditorPlugin(): Plugin {
-  const puzzlesDir = path.resolve(__dirname, 'src/data/puzzles');
+  const savedDir = path.resolve(__dirname, 'src/data/puzzles/saved');
 
   return {
     name: 'puzzle-editor',
@@ -12,8 +12,11 @@ function puzzleEditorPlugin(): Plugin {
         if (!req.url?.startsWith('/__api/puzzles')) return next();
 
         if (req.method === 'GET') {
-          const files = fs.readdirSync(puzzlesDir)
-            .filter(f => f.endsWith('.json') && f.startsWith('puzzle-'))
+          if (!fs.existsSync(savedDir)) {
+            fs.mkdirSync(savedDir, { recursive: true });
+          }
+          const files = fs.readdirSync(savedDir)
+            .filter(f => f.endsWith('.json'))
             .sort();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ files }));
@@ -27,7 +30,10 @@ function puzzleEditorPlugin(): Plugin {
             try {
               const { filename, puzzle } = JSON.parse(body);
               const safeName = filename.replace(/[^a-zA-Z0-9\-_.]/g, '');
-              const filepath = path.join(puzzlesDir, safeName);
+              if (!fs.existsSync(savedDir)) {
+                fs.mkdirSync(savedDir, { recursive: true });
+              }
+              const filepath = path.join(savedDir, safeName);
 
               fs.writeFileSync(filepath, JSON.stringify(puzzle, null, 2) + '\n');
 

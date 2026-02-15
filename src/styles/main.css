@@ -67,14 +67,28 @@ html, body {
   box-shadow: none;
 }
 
-/* Board */
-.board-wrapper {
+/* Game screen */
+.game-screen {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 1rem;
+  height: 100%;
+  padding: 0.5rem;
+  animation: fadeIn 0.3s ease;
+  overflow: hidden;
 }
 
+.game-canvas {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: visible;
+  position: relative;
+  margin-top: 0.5rem;
+}
+
+/* Board */
 .board {
   display: grid;
   gap: var(--gap);
@@ -341,20 +355,61 @@ html, body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 0.5rem;
-  padding: 0.75rem;
+  gap: 0;
+  padding: 0.5rem;
   animation: fadeIn 0.3s ease;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
-.editor-header {
+/* Editor row — generic horizontal row */
+.editor-row {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   align-items: center;
-  flex-wrap: wrap;
   flex-shrink: 0;
+  width: 100%;
 }
+
+/* Row 1: back + puzzle name */
+.editor-name-row {
+  padding-bottom: 0.35rem;
+}
+
+.editor-name-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.35rem 0.6rem;
+}
+
+/* Row 2: settings + action buttons */
+.editor-settings-row {
+  padding-bottom: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.editor-settings-spacer {
+  flex: 1;
+  min-width: 0.25rem;
+}
+
+.editor-settings-row .editor-input {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.4rem;
+  min-height: 32px;
+}
+
+.action-btn {
+  font-size: 0.75rem !important;
+  padding: 0.3rem 0.55rem !important;
+  min-height: 32px !important;
+  white-space: nowrap;
+}
+
+.action-btn.test-btn { background: var(--secondary); }
+.action-btn.download-btn { background: var(--accent); color: var(--text); }
+.import-label { background: var(--text-light) !important; cursor: pointer; }
 
 .editor-input {
   padding: 0.4rem 0.6rem;
@@ -373,35 +428,102 @@ select.editor-input {
   cursor: pointer;
 }
 
-.editor-toolbar {
+/* Row 3: tool tabs */
+.editor-tabs {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  align-items: center;
   flex-shrink: 0;
+  background: var(--cell-bg);
+  border-radius: var(--radius) var(--radius) 0 0;
+  overflow: hidden;
+  margin-top: 0.25rem;
 }
 
-.tool-btn {
-  padding: 0.4rem 0.75rem;
+.editor-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.5rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-light);
+  transition: all 0.15s;
+  white-space: nowrap;
+  min-height: 36px;
+}
+
+.editor-tab.active {
+  background: white;
+  color: var(--text);
+  box-shadow: 0 -2px 0 var(--primary) inset;
+}
+
+.editor-tab:not(.active):hover {
+  background: rgba(255,255,255,0.5);
+}
+
+.editor-tab .tab-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Show labels when there's space, hide on narrow screens */
+.editor-tab .tab-label {
+  display: inline;
+}
+
+@container (max-width: 300px) {
+  .editor-tab .tab-label { display: none; }
+}
+
+/* Row 3b: options tray (below tabs) */
+.editor-options-tray {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 0.4rem 0.5rem;
+  background: white;
+  border: 1px solid var(--cell-bg);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  min-height: 36px;
+}
+
+.opt-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-light);
+}
+
+.opt-btn {
+  padding: 0.25rem 0.55rem;
   border: 2px solid var(--cell-bg);
   border-radius: var(--radius);
   background: white;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
   transition: all 0.15s;
-  min-height: 36px;
+  min-height: 30px;
 }
 
-.tool-btn.active {
+.opt-btn.active {
   border-color: var(--primary);
   background: var(--primary);
   color: white;
 }
 
-.tool-btn:hover:not(.active) {
+.opt-btn:hover:not(.active) {
   border-color: var(--secondary);
 }
 
+/* Grid canvas (fills all remaining space) */
 .editor-canvas {
   flex: 1 1 0;
   display: flex;
@@ -410,6 +532,7 @@ select.editor-input {
   min-height: 0;
   overflow: visible;
   position: relative;
+  margin-top: 0.35rem;
 }
 
 .editor-grid {
@@ -423,20 +546,15 @@ select.editor-input {
 }
 
 .editor-cell {
-  width: var(--cell-size);
-  height: var(--cell-size);
   background: var(--cell-bg);
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
+  aspect-ratio: 1;
 }
 
 .editor-cell:hover {
   background: #c5c0b5;
-}
-
-.editor-cell.edge-cell {
-  cursor: crosshair;
 }
 
 .editor-cell.highlight {
@@ -483,21 +601,6 @@ select.editor-input {
   color: var(--text);
 }
 
-.editor-actions {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-  padding: 0.25rem 0;
-}
-
-.editor-actions .btn {
-  font-size: 0.85rem;
-  padding: 0.4rem 0.75rem;
-  min-height: 40px;
-}
-
 .color-picker {
   display: flex;
   gap: 0.4rem;
@@ -505,8 +608,8 @@ select.editor-input {
 }
 
 .color-swatch {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
@@ -523,25 +626,159 @@ select.editor-input {
 .color-swatch.yellow { background: var(--vehicle-yellow); }
 .color-swatch.purple { background: var(--vehicle-purple); }
 
-/* Test mode overlay in editor */
-.test-overlay {
+/* Editor entity interaction */
+.editor-entity.interactive {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.editor-entity.selected {
+  outline: 3px solid #f0c040;
+  outline-offset: 2px;
+}
+
+.editor-entity.invalid-drop {
+  outline: 3px solid #e74c3c;
+  outline-offset: 2px;
+}
+
+.editor-entity.dragging {
+  cursor: grabbing;
+  z-index: 10;
+  transition: none !important;
+  opacity: 0.85;
+}
+
+.editor-entity.delete-preview {
+  opacity: 0.5;
+}
+
+.editor-entity.delete-preview::after {
+  content: '\1F5D1';
   position: absolute;
   inset: 0;
-  z-index: 20;
-}
-
-.test-controls {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem;
-  background: rgba(255,255,255,0.9);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  font-size: 1.5rem;
+  background: rgba(231, 76, 60, 0.6);
+  border-radius: inherit;
 }
 
-.test-controls .move-counter {
+/* Editor toast */
+.editor-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  z-index: 200;
+  animation: toastIn 0.25s ease, toastOut 0.3s ease 2.2s forwards;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toastOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Saved badge on level cards */
+.saved-badge {
+  font-size: 0.7rem;
+  background: var(--accent);
+  color: var(--text);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
   font-weight: 700;
+  vertical-align: middle;
+}
+
+.level-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-size: 1.1rem;
+}
+
+.level-edit-btn, .level-delete-btn {
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.level-edit-btn:hover, .level-delete-btn:hover {
+  opacity: 1;
+}
+
+.level-delete-btn {
+  color: #e74c3c;
+}
+
+/* Load puzzle dialog */
+.load-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease;
+}
+
+.load-dialog {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  max-width: 360px;
+  width: 90%;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: var(--shadow-lg);
+}
+
+.load-dialog h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.load-dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+.load-dialog-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--cell-bg);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
   font-size: 0.9rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.load-dialog-item:hover {
+  background: var(--secondary);
+  color: white;
 }
