@@ -5,7 +5,7 @@ import { renderLevelSelector } from './ui/LevelSelector';
 import { GameRenderer } from './ui/GameRenderer';
 import { showWinScreen } from './ui/WinScreen';
 import { PuzzleEditor } from './ui/PuzzleEditor';
-import type { Puzzle, RawPuzzle } from './types/puzzle';
+import type { RawPuzzle } from './types/puzzle';
 
 const app = document.getElementById('app')!;
 
